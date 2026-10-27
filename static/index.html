@@ -1,0 +1,48 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager Lite</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/script.js" defer></script>
+</head>
+<body>
+    <main class="container">
+        <header>
+            <h1>Task Manager Lite</h1>
+            <p>Organize your work, one task at a time.</p>
+        </header>
+
+        <form id="task-form">
+            <label for="title">Task title</label>
+            <input
+                id="title"
+                name="title"
+                type="text"
+                maxlength="200"
+                placeholder="What do you need to do?"
+                required
+            >
+
+            <label for="description">Description (optional)</label>
+            <textarea
+                id="description"
+                name="description"
+                maxlength="2000"
+                placeholder="Add details..."
+            ></textarea>
+
+            <button type="submit">Add Task</button>
+        </form>
+
+        <p id="message" role="status" aria-live="polite"></p>
+
+        <section aria-labelledby="tasks-heading">
+            <h2 id="tasks-heading">My Tasks</h2>
+            <ul id="task-list"></ul>
+        </section>
+    </main>
+</body>
+</html>

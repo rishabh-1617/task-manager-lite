@@ -1,0 +1,184 @@
+
+/* 1. Reset and base styles */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 40px 16px;
+    font-family: Arial, sans-serif;
+    background: #f3f4f6;
+    color: #1f2937;
+    line-height: 1.6;
+}
+
+/* 2. Main container */
+.container {
+    width: 100%;
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 32px;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+}
+
+/* 3. Page heading */
+header {
+    margin-bottom: 28px;
+    text-align: center;
+}
+
+header h1 {
+    margin: 0;
+    color: #2563eb;
+    font-size: 2rem;
+}
+
+header p {
+    margin-top: 8px;
+    color: #6b7280;
+}
+
+/* 4. Form layout */
+#task-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+label {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+input,
+textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font: inherit;
+    background: #ffffff;
+}
+
+textarea {
+    min-height: 100px;
+    resize: vertical;
+}
+
+input:focus,
+textarea:focus {
+    outline: 2px solid #93c5fd;
+    border-color: #2563eb;
+}
+
+/* 5. Buttons */
+button {
+    padding: 12px 18px;
+    border: none;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #ffffff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+#task-form button {
+    margin-top: 8px;
+}
+
+button:hover {
+    background: #1d4ed8;
+}
+
+button:focus-visible {
+    outline: 3px solid #93c5fd;
+    outline-offset: 2px;
+}
+
+/* 6. Status message */
+#message {
+    min-height: 24px;
+    margin: 12px 0;
+    color: #4b5563;
+}
+
+/* 7. Task section */
+section h2 {
+    margin-top: 28px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+#task-list {
+    padding: 0;
+    list-style: none;
+}
+
+/* 8. Responsive layout for mobile */
+@media (max-width: 600px) {
+    body {
+        padding: 20px 12px;
+    }
+
+    .container {
+        padding: 22px 18px;
+    }
+
+    header h1 {
+        font-size: 1.7rem;
+    }
+}
+
+
+/* Task list layout */
+#task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#task-list li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+    padding: 12px 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+#task-list li input[type="checkbox"] {
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+}
+
+#task-list li span {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+#task-list li button {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+    padding: 7px 12px;
+    font-size: 0.9rem;
+}
+
+@media (max-width: 600px) {
+    #task-list li {
+        gap: 8px;
+    }
+}
