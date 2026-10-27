@@ -1,5 +1,4 @@
 import os
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -7,14 +6,47 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from sqlalchemy import create_engine, text
 
 BASE_DIR = Path(__file__).resolve().parent
-
-# Use a configured database path when provided.
-# Otherwise, use tasks.db in the project directory.
 DB_PATH = Path(
     os.getenv("TASK_MANAGER_DB_PATH", str(BASE_DIR / "tasks.db"))
 )
+
+# Use PostgreSQL when DATABASE_URL is configured.
+# Otherwise, use SQLite for local development and testing.
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgres://", "postgresql+psycopg://", 1
+    )
+elif DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgresql://", "postgresql+psycopg://", 1
+    )
+
+_engines = {}
+
+
+def get_engine():
+    """Return the engine for the currently configured database."""
+    if DATABASE_URL:
+        url = DATABASE_URL
+        connect_args = {}
+    else:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        url = f"sqlite:///{DB_PATH.as_posix()}"
+        connect_args = {"check_same_thread": False}
+
+    if url not in _engines:
+        _engines[url] = create_engine(
+            url,
+            connect_args=connect_args,
+            pool_pre_ping=True,
+        )
+
+    return _engines[url]
 
 
 class TaskCreate(BaseModel):
@@ -29,33 +61,37 @@ class TaskUpdate(BaseModel):
 
 
 def init_db():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
     """Create the tasks table if it doesn't exist."""
-    connection = sqlite3.connect(DB_PATH)
+    engine = get_engine()
+    is_postgres = engine.dialect.name == "postgresql"
 
-    try:
+    id_column = (
+        "SERIAL PRIMARY KEY"
+        if is_postgres
+        else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    )
+    completed_column = "BOOLEAN" if is_postgres else "INTEGER"
+    completed_default = "FALSE" if is_postgres else "0"
+
+    with engine.begin() as connection:
         connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                description TEXT NOT NULL DEFAULT '',
-                completed INTEGER NOT NULL DEFAULT 0
-                    CHECK (completed IN (0, 1)),
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            text(
+                f"""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id {id_column},
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    completed {completed_column} NOT NULL DEFAULT {completed_default},
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
             )
-            """
         )
-        connection.commit()
-    finally:
-        connection.close()
 
 
 # Initialize the database and table.
 init_db()
-
 
 app = FastAPI(
     title="Task Manager API",
@@ -75,6 +111,7 @@ def serve_homepage():
 def health_check():
     return {"status": "healthy"}
 
+
 @app.post("/api/tasks", status_code=201)
 def create_task(task: TaskCreate):
     title = task.title.strip()
@@ -88,45 +125,40 @@ def create_task(task: TaskCreate):
     description = task.description.strip()
     now = datetime.now(timezone.utc).isoformat()
 
-    connection = sqlite3.connect(DB_PATH)
-    connection.row_factory = sqlite3.Row
-
-    try:
-        cursor = connection.execute(
-            """
-            INSERT INTO tasks (title, description, completed, created_at, updated_at)
-            VALUES (?, ?, 0, ?, ?)
-            """,
-            (title, description, now, now),
+    with get_engine().begin() as connection:
+        result = connection.execute(
+            text(
+                """
+                INSERT INTO tasks
+                    (title, description, completed, created_at, updated_at)
+                VALUES
+                    (:title, :description, :completed, :created_at, :updated_at)
+                RETURNING *
+                """
+            ),
+            {
+                "title": title,
+                "description": description,
+                "completed": False,
+                "created_at": now,
+                "updated_at": now,
+            },
         )
 
-        connection.commit()
+        created_task = dict(result.mappings().one())
 
-        created_task = connection.execute(
-            "SELECT * FROM tasks WHERE id = ?",
-            (cursor.lastrowid,),
-        ).fetchone()
-
-        return dict(created_task)
-    
-    finally:
-        connection.close()
+    return created_task
 
 
 @app.get("/api/tasks")
 def get_tasks():
-    connection = sqlite3.connect(DB_PATH)
-    connection.row_factory = sqlite3.Row
+    with get_engine().connect() as connection:
+        result = connection.execute(
+            text("SELECT * FROM tasks ORDER BY id DESC")
+        )
+        rows = result.mappings().all()
 
-    try:
-        rows = connection.execute(
-            "SELECT * FROM tasks ORDER BY id DESC"
-        ).fetchall()
-
-        return [dict(row) for row in rows]
-
-    finally:
-        connection.close()
+    return [dict(row) for row in rows]
 
 
 @app.put("/api/tasks/{task_id}")
@@ -140,61 +172,55 @@ def update_task(task_id: int, task: TaskUpdate):
         )
 
     description = task.description.strip()
-    completed = int(task.completed)
     now = datetime.now(timezone.utc).isoformat()
 
-    connection = sqlite3.connect(DB_PATH)
-    connection.row_factory = sqlite3.Row
-
-    try:
-        cursor = connection.execute(
-            """
-            UPDATE tasks
-            SET title = ?,
-                description = ?,
-                completed = ?,
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (title, description, completed, now, task_id),
+    with get_engine().begin() as connection:
+        result = connection.execute(
+            text(
+                """
+                UPDATE tasks
+                SET title = :title,
+                    description = :description,
+                    completed = :completed,
+                    updated_at = :updated_at
+                WHERE id = :task_id
+                """
+            ),
+            {
+                "title": title,
+                "description": description,
+                "completed": task.completed,
+                "updated_at": now,
+                "task_id": task_id,
+            },
         )
 
-        if cursor.rowcount == 0:
+        if result.rowcount == 0:
             raise HTTPException(
                 status_code=404,
                 detail="Task not found.",
             )
 
-        connection.commit()
-
         updated_task = connection.execute(
-            "SELECT * FROM tasks WHERE id = ?",
-            (task_id,),
-        ).fetchone()
+            text("SELECT * FROM tasks WHERE id = :task_id"),
+            {"task_id": task_id},
+        ).mappings().one()
 
-        return dict(updated_task)
+        updated_task = dict(updated_task)
 
-    finally:
-        connection.close()
+    return updated_task
 
 
 @app.delete("/api/tasks/{task_id}", status_code=204)
 def delete_task(task_id: int):
-    connection = sqlite3.connect(DB_PATH)
-
-    try:
-        cursor = connection.execute(
-            "DELETE FROM tasks WHERE id = ?",
-            (task_id,),
+    with get_engine().begin() as connection:
+        result = connection.execute(
+            text("DELETE FROM tasks WHERE id = :task_id"),
+            {"task_id": task_id},
         )
 
-        if cursor.rowcount == 0:
+        if result.rowcount == 0:
             raise HTTPException(
                 status_code=404,
                 detail="Task not found.",
             )
-
-        connection.commit()
-
-    finally:
-        connection.close()
